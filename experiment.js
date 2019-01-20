@@ -35,18 +35,16 @@ var config = {
     var gold1,gold2,gold3,gold4;
     var stimulusLength;
     var reticle;
-    var red_gold_visibility;
-    var blue_gold_visibility;
-    var purple_gold_visibility;
-    var green_gold_visibility;
     var wrong_red;
     var wrong_blue;
     var wrong_green;
     var wrong_purple;
+    var gameOver;
+    var currentTrial;
     var poissonMean = 40;
     var TIMEOUT_BETWEEN_BOXES = 100;
-    var TIME_TO_RESET = 1500;
-    var TIME_PER_TRIAL = 3500;
+    var TIME_TO_RESET = 1000;
+    var TIME_PER_TRIAL = 2500;
     var RULES = "THE GOAL OF THE GAME IS FINDING THE TREASURE, WHICH LIES IN ONE OF THE CHESTS.\
                  \n\nUSE YOUR KEY (  ) TO OPEN CHESTS (   ) BY CLICKING OVER THEM. \
                  \n\nA RED CIRCLE SIGNALS THE CHEST IS EMPTY. \
@@ -55,7 +53,10 @@ var config = {
                  \n\nTRY TO EARN AS MUCH TREASURE AS YOU CAN!";
     var CHESTS_OPENED = 0;
     var TREASURE_FOUND = 0;
-    
+    var TOTAL_TRIALS = 0;
+    var GAME_OVER_THRESHOLD = 400;
+    var DEMO = true;
+    var isGameOver = false;
 
     function randomPoisson(n) {
         var L = Math.exp(-n);
@@ -76,7 +77,8 @@ var config = {
         currentDistribution = generateNewDistribution();
         distributions.push(currentDistribution);
         currentBackground = pickNewBackground();
-        backgrounds.push(currentBackground);
+        if (currentBackground != "")
+            backgrounds.push(currentBackground);
     }
 
     function generateNewDistribution()
@@ -90,10 +92,10 @@ var config = {
         blueProb = blueProb / S;
         greenProb = greenProb / S;
         purpleProb = purpleProb / S;
-        d = {"red":redProb,
-             "blue":blueProb,
-             "green":greenProb,
-             "purple":purpleProb};
+        d = {"red":parseFloat(redProb.toFixed(2)),
+             "blue":parseFloat(blueProb.toFixed(2)),
+             "green":parseFloat(greenProb.toFixed(2)),
+             "purple":parseFloat(purpleProb.toFixed(2))};
         return d;
     }
 
@@ -118,6 +120,11 @@ var config = {
             {
                 availableBackgrounds.push(curBg);
             }
+        }
+        if (availableBackgrounds.length == 0)
+        {
+            console.log("ERROR")
+            return "";
         }
         return availableBackgrounds[Math.floor(Math.random() * availableBackgrounds.length)];
     }
@@ -166,43 +173,40 @@ var config = {
 
     function chooseNewStimulusCRP()
     {
-      epoch = 0;
-      N = distributions.length;
-      rgn = Math.random();
-      console.log(rgn);
-      console.log(currentBackground);
-      console.log(currentDistribution);
-      console.log((N - 1.0) / (N + 1.0));
-      if (rgn > ((N - 1.0) / (N + 1.0)))
-      {
-          console.log("NEW BACKGROUND")
+        TOTAL_TRIALS = TOTAL_TRIALS + epoch
+        if (TOTAL_TRIALS >= GAME_OVER_THRESHOLD)
+        {
+            gameOver(this);
+            return;
+        }
+        epoch = 0;
+        N = distributions.length;
+        rgn = Math.random();
+        if (rgn > ((N - 1.0) / (N + 1.0)))
+        {
           setupNewBackground(this);
-      }
-      else
-      {
-          console.log("REVERT")
-          s = 0;
-          for (ii = 0; ii < N; ii++)
-          {
-              if (backgrounds[ii]!==currentBackground)
-              { 
-                s = s + 1.0 / (N + 1.0);
-                console.log(s);
-                if (s >= rgn)
-                {
-                  currentDistribution = distributions[ii];
-                  currentBackground = backgrounds[ii];
-                  break;
+        }
+        else
+        {
+            s = 0;
+            for (ii = 0; ii < N; ii++)
+            {
+                if (backgrounds[ii]!==currentBackground)
+                { 
+                    s = s + 1.0 / (N + 1.0);
+                    if (s >= rgn)
+                    {
+                        currentDistribution = distributions[ii];
+                        currentBackground = backgrounds[ii];
+                        break;
+                    }
                 }
-              }
-          }
-      }
+            }
+        }
     }
 
     function resetGame()
     {
-       console.log("RESET GAME");
-       console.log(currentDistribution);
        setTimeout(function(){
          red.setTexture("red");
          blue.setTexture("blue");
@@ -216,17 +220,33 @@ var config = {
          makeEverythingInvisible();
          winner = pickWinner(currentDistribution)
          epoch += 1;
+         RESULTS['trials'].push(currentTrial);
+         currentTrial = []
          if (epoch == stimulusLength){
-            console.log(backgrounds);
-            console.log(distributions);
+            d = new Object();
             chooseNewStimulusCRP(this);
-            stimulusLength = randomPoisson(poissonMean);
-            bg.setTexture(currentBackground);
+
+            if (!isGameOver)
+            {
+                stimulusLength = randomPoisson(poissonMean);
+                bg.setTexture(currentBackground);
+                d = new Object();
+                d.start_trial = TOTAL_TRIALS + 1;
+                d.end_trial = TOTAL_TRIALS + stimulusLength;
+                d.background_name = currentBackground;
+                d.dist = currentDistribution;
+                RESULTS['distributions'].push(d);
+            }
+            else
+            {
+                console.log(JSON.stringify(RESULTS));
+            }
          }
          reticle.setTexture("key",frame=2);
          resetReticle();
          var now = new Date().getTime();
          countDownDate = now + TIME_PER_TRIAL;
+
        }, TIME_TO_RESET);
 
     }
@@ -238,14 +258,11 @@ var config = {
 
     function create ()
     {
-      console.log("create")
       showIntro.call(this)
-
     }
 
     function showIntro()
     {
-       console.log("Show Intro")
        reticle = this.add.sprite(250, 130, 'key',frame=2).setInteractive();
        chest = this.add.sprite(442, 130, 'treasure_chests', frame=19);
        rules_text = this.add.text(100, 100, RULES, { fill: '#0f0' });
@@ -255,169 +272,203 @@ var config = {
 
     function startGame(){
 
-      startedGame = true;
-      setupNewBackground(this);
-      clickButton.destroy();
-      rules_text.destroy();
-      winner = pickWinner(currentDistribution);
-      stimulusLength = randomPoisson(poissonMean);
-      var now = new Date().getTime();
-      countDownDate = now + TIME_PER_TRIAL;
-
-      bg = this.add.tileSprite(640, 360, 1280, 720, currentBackground);
-      red = this.add.sprite(440,  170, 'red').setInteractive();
-      blue = this.add.sprite(440, 550, 'blue').setInteractive();
-      green = this.add.sprite(840, 550, 'green').setInteractive();
-      purple = this.add.sprite(840,170, 'purple').setInteractive();
-      red_gold = this.physics.add.staticGroup();
-      blue_gold = this.physics.add.staticGroup();
-      green_gold = this.physics.add.staticGroup();
-      purple_gold = this.physics.add.staticGroup();
-      score_gold = this.physics.add.staticGroup();
-
-      red_gold1 = this.add.sprite(440,170, 'gold', frame = 13);
-      red_gold2 = this.add.sprite(456,170, 'gold', frame = 12);
-      red_gold3 = this.add.sprite(424,170, 'gold', frame = 9);
-      red_gold4 = this.add.sprite(440,154, 'gold', frame = 10);
-      red_gold5 = this.add.sprite(456,154, 'gold', frame = 9);
-
-      red_gold.add(red_gold1);
-      red_gold.add(red_gold2);
-      red_gold.add(red_gold3);
-      red_gold.add(red_gold4);
-      red_gold.add(red_gold5);
-      red_gold.toggleVisible();
-
-      blue_gold1 = this.add.sprite(440,550, 'gold', frame = 13);
-      blue_gold2 = this.add.sprite(456,550, 'gold', frame = 12);
-      blue_gold3 = this.add.sprite(424,550, 'gold', frame = 9);
-      blue_gold4 = this.add.sprite(440,534, 'gold', frame = 10);
-      blue_gold5 = this.add.sprite(456,534, 'gold', frame = 9);
-
-      blue_gold.add(blue_gold1);
-      blue_gold.add(blue_gold2);
-      blue_gold.add(blue_gold3);
-      blue_gold.add(blue_gold4);
-      blue_gold.add(blue_gold5);
-      blue_gold.toggleVisible();
-
-      green_gold1 = this.add.sprite(840,550, 'gold', frame = 13);
-      green_gold2 = this.add.sprite(856,550, 'gold', frame = 12);
-      green_gold3 = this.add.sprite(824,550, 'gold', frame = 9);
-      green_gold4 = this.add.sprite(840,534, 'gold', frame = 10);
-      green_gold5 = this.add.sprite(856,534, 'gold', frame = 9);
-
-      green_gold.add(green_gold1);
-      green_gold.add(green_gold2);
-      green_gold.add(green_gold3);
-      green_gold.add(green_gold4);
-      green_gold.add(green_gold5);
-      green_gold.toggleVisible();
-
-      purple_gold1 = this.add.sprite(840,170, 'gold', frame = 13);
-      purple_gold2 = this.add.sprite(856,170, 'gold', frame = 12);
-      purple_gold3 = this.add.sprite(824,170, 'gold', frame = 9);
-      purple_gold4 = this.add.sprite(840,154, 'gold', frame = 10);
-      purple_gold5 = this.add.sprite(856,154, 'gold', frame = 9);
-
-      purple_gold.add(purple_gold1);
-      purple_gold.add(purple_gold2);
-      purple_gold.add(purple_gold3);
-      purple_gold.add(purple_gold4);
-      purple_gold.add(purple_gold5);
-      purple_gold.toggleVisible();
-
-      reticle = this.add.sprite(640, 360, 'key',frame=2).setInteractive();
-      treasure_found = this.add.sprite(1100, 50, 'treasure_chests', frame = 39);
-      score_gold1 = this.add.sprite(1100,100, 'gold', frame = 13);
-      score_gold2 = this.add.sprite(1116,100, 'gold', frame = 12);
-      score_gold3 = this.add.sprite(1084,100, 'gold', frame = 9);
-      score_gold4 = this.add.sprite(1100,84, 'gold', frame = 10);
-      score_gold5 = this.add.sprite(1116,84, 'gold', frame = 9);
-
-      score_gold.add(score_gold1);
-      score_gold.add(score_gold2);
-      score_gold.add(score_gold3);
-      score_gold.add(score_gold4);
-      score_gold.add(score_gold5);
-
-      chest_score = this.add.text(1150, 35, '0', {fontSize: '32px', fill: '#000'});
-      treasure_score = this.add.text(1150, 85, '0', {fontSize:'32px', fill:"#000"});
-      hourglass = this.add.sprite(50, 50, 'hourglass');
-      timeleft = this.add.text(100, 30, '5', {fontSize:'50px', fill:'#000'});
-      red.inputEnabled = true;
-      blue.inputEnabled = true;
-      green.inputEnabled = true;
-      purple.inputEnabled = true;
-      reticle.inputEnabled = true;
-      red_gold_visibility = false;
-      purple_gold_visibility = false;
-      green_gold_visibility = false;
-      blue_gold_visibility = false;
-
-      wrong_purple = this.add.sprite(840, 170, 'wrong');
-      wrong_purple.setVisible(false);
-      wrong_red = this.add.sprite(440, 170, 'wrong');
-      wrong_red.setVisible(false);
-      wrong_green = this.add.sprite(840, 550, 'wrong');
-      wrong_green.setVisible(false);
-      wrong_blue = this.add.sprite(440, 550, 'wrong');
-      wrong_blue.setVisible(false);
-
-      correct_red = this.add.sprite(440, 170, 'correct');
-      correct_red.setVisible(false);
-      correct_purple = this.add.sprite(840, 170, 'correct');
-      correct_purple.setVisible(false);
-      correct_green = this.add.sprite(840, 550, 'correct');
-      correct_green.setVisible(false);
-      correct_blue = this.add.sprite(440, 550, 'correct');
-      correct_blue.setVisible(false);
-
-      timeUp = this.add.text(480, 315, "TIME'S UP", {fill:'#000', font:'65px Arial'}).setInteractive()
-      timeUp.setVisible(false);
-
-      console.log("CREATE");
-      game.canvas.addEventListener('mouseup', function () {
-        game.input.mouse.requestPointerLock();
-    });
-      console.log(this);
-      this.input.on('pointermove', function (pointer) {
-
-          // Move reticle with mouse
-          reticle.x += pointer.movementX;
-          reticle.y += pointer.movementY;
-
-    }, this);
-
-      this.input.on('pointerdown', function(pointer) {
-        if (reticle.x > 376 && reticle.x < 504 && reticle.y > 106 && reticle.y < 234 && !clicked &&!opened["red"])
+        if(DEMO)
         {
-          opened["red"] = true;
-          openRed.call(this);
+            poissonMean = 5;
+            GAME_OVER_THRESHOLD = 10;
         }
-        if (reticle.x > 376 && reticle.x < 504 && reticle.y > 486 && reticle.y < 614 && !clicked && !opened["blue"])
+        else
         {
-          opened["blue"] = true;
-          openBlue.call(this);
-        }
-        if (reticle.x > 776 && reticle.x < 904 && reticle.y > 486 && reticle.y < 614 && !clicked && !opened["green"])
-        {
-          opened["green"] = true;
-          openGreen.call(this);
-        }
-        if (reticle.x > 776 && reticle.x < 904 && reticle.y > 106 && reticle.y < 234 && !clicked && !opened["purple"])
-        {
-          opened["purple"] = true;
-          openPurple.call(this);
-        }
-      }, this);
+            poissonMean = 40;
+            GAME_OVER_THRESHOLD = 400;
+        }   
+        RESULTS = new Object();
+        RESULTS['distributions'] = [];
+        RESULTS['trials'] = []
+        currentTrial = []
+        startedGame = true;
+        setupNewBackground(this);
+        clickButton.destroy();
+        rules_text.destroy();
+        chest.destroy();
+        reticle.destroy();
+        winner = pickWinner(currentDistribution);
+        stimulusLength = randomPoisson(poissonMean);
 
-    console.log("CREATE_END")
+        d = new Object();
+        d.start_trial = 0;
+        d.end_trial = stimulusLength;
+        d.background_name = currentBackground;
+        d.dist = currentDistribution;
+        RESULTS['distributions'].push(d);
+
+        var now = new Date().getTime();
+        countDownDate = now + TIME_PER_TRIAL;
+
+        bg = this.add.tileSprite(640, 360, 1280, 720, currentBackground);
+        red = this.add.sprite(440,  170, 'red').setInteractive();
+        blue = this.add.sprite(440, 550, 'blue').setInteractive();
+        green = this.add.sprite(840, 550, 'green').setInteractive();
+        purple = this.add.sprite(840,170, 'purple').setInteractive();
+        red_gold = this.physics.add.staticGroup();
+        blue_gold = this.physics.add.staticGroup();
+        green_gold = this.physics.add.staticGroup();
+        purple_gold = this.physics.add.staticGroup();
+        score_gold = this.physics.add.staticGroup();
+
+        red_gold1 = this.add.sprite(440,170, 'gold', frame = 13);
+        red_gold2 = this.add.sprite(456,170, 'gold', frame = 12);
+        red_gold3 = this.add.sprite(424,170, 'gold', frame = 9);
+        red_gold4 = this.add.sprite(440,154, 'gold', frame = 10);
+        red_gold5 = this.add.sprite(456,154, 'gold', frame = 9);
+
+        red_gold.add(red_gold1);
+        red_gold.add(red_gold2);
+        red_gold.add(red_gold3);
+        red_gold.add(red_gold4);
+        red_gold.add(red_gold5);
+        red_gold.toggleVisible();
+
+        blue_gold1 = this.add.sprite(440,550, 'gold', frame = 13);
+        blue_gold2 = this.add.sprite(456,550, 'gold', frame = 12);
+        blue_gold3 = this.add.sprite(424,550, 'gold', frame = 9);
+        blue_gold4 = this.add.sprite(440,534, 'gold', frame = 10);
+        blue_gold5 = this.add.sprite(456,534, 'gold', frame = 9);
+
+        blue_gold.add(blue_gold1);
+        blue_gold.add(blue_gold2);
+        blue_gold.add(blue_gold3);
+        blue_gold.add(blue_gold4);
+        blue_gold.add(blue_gold5);
+        blue_gold.toggleVisible();
+
+        green_gold1 = this.add.sprite(840,550, 'gold', frame = 13);
+        green_gold2 = this.add.sprite(856,550, 'gold', frame = 12);
+        green_gold3 = this.add.sprite(824,550, 'gold', frame = 9);
+        green_gold4 = this.add.sprite(840,534, 'gold', frame = 10);
+        green_gold5 = this.add.sprite(856,534, 'gold', frame = 9);
+
+        green_gold.add(green_gold1);
+        green_gold.add(green_gold2);
+        green_gold.add(green_gold3);
+        green_gold.add(green_gold4);
+        green_gold.add(green_gold5);
+        green_gold.toggleVisible();
+
+        purple_gold1 = this.add.sprite(840,170, 'gold', frame = 13);
+        purple_gold2 = this.add.sprite(856,170, 'gold', frame = 12);
+        purple_gold3 = this.add.sprite(824,170, 'gold', frame = 9);
+        purple_gold4 = this.add.sprite(840,154, 'gold', frame = 10);
+        purple_gold5 = this.add.sprite(856,154, 'gold', frame = 9);
+
+        purple_gold.add(purple_gold1);
+        purple_gold.add(purple_gold2);
+        purple_gold.add(purple_gold3);
+        purple_gold.add(purple_gold4);
+        purple_gold.add(purple_gold5);
+        purple_gold.toggleVisible();
+
+        reticle = this.add.sprite(640, 360, 'key',frame=2).setInteractive();
+        treasure_found = this.add.sprite(1100, 50, 'treasure_chests', frame = 39);
+        score_gold1 = this.add.sprite(1100,100, 'gold', frame = 13);
+        score_gold2 = this.add.sprite(1116,100, 'gold', frame = 12);
+        score_gold3 = this.add.sprite(1084,100, 'gold', frame = 9);
+        score_gold4 = this.add.sprite(1100,84, 'gold', frame = 10);
+        score_gold5 = this.add.sprite(1116,84, 'gold', frame = 9);
+
+        score_gold.add(score_gold1);
+        score_gold.add(score_gold2);
+        score_gold.add(score_gold3);
+        score_gold.add(score_gold4);
+        score_gold.add(score_gold5);
+
+        chest_score = this.add.text(1150, 35, '0', {fontSize: '32px', fill: '#000'});
+        treasure_score = this.add.text(1150, 85, '0', {fontSize:'32px', fill:"#000"});
+        hourglass = this.add.sprite(50, 50, 'hourglass');
+        timeleft = this.add.text(100, 30, '5', {fontSize:'50px', fill:'#000'});
+        red.inputEnabled = true;
+        blue.inputEnabled = true;
+        green.inputEnabled = true;
+        purple.inputEnabled = true;
+        reticle.inputEnabled = true;
+
+        wrong_purple = this.add.sprite(840, 170, 'wrong');
+        wrong_purple.setVisible(false);
+        wrong_red = this.add.sprite(440, 170, 'wrong');
+        wrong_red.setVisible(false);
+        wrong_green = this.add.sprite(840, 550, 'wrong');
+        wrong_green.setVisible(false);
+        wrong_blue = this.add.sprite(440, 550, 'wrong');
+        wrong_blue.setVisible(false);
+
+        correct_red = this.add.sprite(440, 170, 'correct');
+        correct_red.setVisible(false);
+        correct_purple = this.add.sprite(840, 170, 'correct');
+        correct_purple.setVisible(false);
+        correct_green = this.add.sprite(840, 550, 'correct');
+        correct_green.setVisible(false);
+        correct_blue = this.add.sprite(440, 550, 'correct');
+        correct_blue.setVisible(false);
+
+        timeUp = this.add.text(480, 315, "TIME'S UP", {fill:'#000', font:'65px Arial'}).setInteractive()
+        timeUp.setVisible(false);
+        gameOverText = this.add.text(480, 315, "GAME OVER", {fill:'#0f0', font:'65px Arial'});
+        gameOverText.setVisible(false);
+
+        game.canvas.addEventListener('mouseup', function () {
+            game.input.mouse.requestPointerLock();
+        });
+        
+        this.input.on('pointermove', function (pointer) {
+
+            // Move reticle with mouse
+            reticle.x += pointer.movementX;
+            reticle.y += pointer.movementY;
+        }, this);
+
+        this.input.on('pointerdown', function(pointer) {
+            if (!isGameOver)
+            {
+                if (reticle.x > 376 && reticle.x < 504 && reticle.y > 106 && reticle.y < 234 && !clicked &&!opened["red"])
+                {
+                    opened["red"] = true;
+                    openRed.call(this);
+                }
+
+                if (reticle.x > 376 && reticle.x < 504 && reticle.y > 486 && reticle.y < 614 && !clicked && !opened["blue"])
+                {
+                    opened["blue"] = true;
+                    openBlue.call(this);
+                }
+
+                if (reticle.x > 776 && reticle.x < 904 && reticle.y > 486 && reticle.y < 614 && !clicked && !opened["green"])
+                {
+                    opened["green"] = true;
+                    openGreen.call(this);
+                }
+
+                if (reticle.x > 776 && reticle.x < 904 && reticle.y > 106 && reticle.y < 234 && !clicked && !opened["purple"])
+                {
+                    opened["purple"] = true;
+                    openPurple.call(this);
+                }    
+            }
+            
+        }, this);
+
   }
 
      function openPurple(){
-       console.log("openPurple");
-       resetReticle();
+        now = new Date().getTime();
+        var distance = countDownDate - now;
+        var seconds = ((TIME_PER_TRIAL - distance) % (1000 * 60)) / 1000;
+        t = new Object();
+        t.colour = "purple";
+        t.reaction_time = seconds;
+        t.order = getOrder("purple", currentDistribution);
+        currentTrial.push(t);
+
+        resetReticle();
         if (!clicked)
         {
           clicked = true;
@@ -430,7 +481,6 @@ var config = {
                 TREASURE_FOUND += 1;
                 treasure_score.setText(TREASURE_FOUND);
                 correct_purple.setVisible(true);
-                purple_gold_visibility = true;
                 purple_gold.toggleVisible();
                 resetGame(this);
               }
@@ -444,7 +494,15 @@ var config = {
       }
 
       function openRed(){
-        console.log("openRed");
+        now = new Date().getTime();
+        var distance = countDownDate - now;
+        var seconds = ((TIME_PER_TRIAL - distance) % (1000 * 60)) / 1000;
+        t = new Object();
+        t.colour = "red";
+        t.reaction_time = seconds;
+        t.order = getOrder("red", currentDistribution);
+        currentTrial.push(t);
+
         resetReticle();
         if (!clicked)
         {
@@ -455,7 +513,6 @@ var config = {
               CHESTS_OPENED += 1;
               chest_score.setText(CHESTS_OPENED);
               if (winner === "red"){
-                red_gold_visibility = true;
                 red_gold.toggleVisible();
                 correct_red.setVisible(true);
                 TREASURE_FOUND += 1;
@@ -474,7 +531,15 @@ var config = {
 
 
       function openGreen(){
-        console.log("openGreen");
+        now = new Date().getTime();
+        var distance = countDownDate - now;
+        var seconds = ((TIME_PER_TRIAL - distance) % (1000 * 60)) / 1000;
+        t = new Object();
+        t.colour = "green";
+        t.reaction_time = seconds
+        t.order = getOrder("green", currentDistribution);
+        currentTrial.push(t);
+
         resetReticle();
         if (!clicked)
         {
@@ -502,7 +567,16 @@ var config = {
 
 
       function openBlue(){
-        console.log("openBlue");
+        now = new Date().getTime();
+        var distance = countDownDate - now;
+        var seconds = ((TIME_PER_TRIAL - distance) % (1000 * 60)) / 1000;
+        t = new Object();
+        t.colour = "blue";
+        t.reaction_time = seconds;
+        t.order = getOrder("blue", currentDistribution);
+        currentTrial.push(t);
+
+
         resetReticle();
         if (!clicked)
         {
@@ -530,20 +604,19 @@ var config = {
 
 
 function update() {
-    if (startedGame)
+    if (startedGame && !isGameOver)
     {
         now = new Date().getTime();
         var distance = countDownDate - now;
         var seconds = Math.ceil((distance % (1000 * 60)) / 1000);
 
-    
         if (distance < 0 && !clicked)
         {
             displayWinner();
             countDownDate = now + TIME_PER_TRIAL;
             timeUp.setVisible(true);
             setTimeout(function(){
-                resetGame();
+                resetGame(this);
                 countDownDate = now + TIME_PER_TRIAL;
             }, 1000);
         }
@@ -552,6 +625,21 @@ function update() {
             timeleft.setText(seconds); 
         }
     }
+}
+
+function getOrder(colour, distribution)
+{
+    var col;
+    var answer = 1;
+    for (cc in colors)
+    {
+        col = colors[cc];
+        if (col === colour)
+            continue;
+        if (distribution[col] > distribution[colour])
+            answer += 1; 
+    }
+    return answer;
 }
 
 function displayWinner(){
@@ -609,4 +697,39 @@ function makeEverythingInvisible()
     blue_gold.children.each(function(c) { c.setVisible(false);});
     green_gold.children.each(function(c) { c.setVisible(false);});
     purple_gold.children.each(function(c) { c.setVisible(false);});
+}
+
+function gameOver()
+{
+    isGameOver = true;
+
+    red.destroy();
+    blue.destroy();
+    green.destroy();
+    purple.destroy();
+
+    red_gold.children.each(function(c) { c.destroy();});
+    blue_gold.children.each(function(c) { c.destroy();});
+    green_gold.children.each(function(c) { c.destroy();});
+    purple_gold.children.each(function(c) { c.destroy();});
+
+    timeUp.destroy();
+
+    wrong_purple.destroy();
+    wrong_red.destroy();
+    wrong_green.destroy();
+    wrong_blue.destroy();
+
+    timeleft.destroy();
+    hourglass.destroy();
+    bg.destroy();
+
+    gameOverText.setVisible(true);
+    chest_score.setStyle({
+        color: '#00ff00'
+    });
+    treasure_score.setStyle({
+        color: '#00ff00'
+    });    
+
 }
