@@ -919,7 +919,7 @@ function gameOver()
 
     var data = new FormData();
     data.append("id", "TEST2");
-    data.append("results", RESULTS);
+    data.append("results", JSON.stringify(RESULTS));
 
     var xhr = new XMLHttpRequest();
     xhr.withCredentials = true;
