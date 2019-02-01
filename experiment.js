@@ -930,9 +930,8 @@ function gameOver()
      }
     });
 
-    xhr.open("POST", "http://ec2-18-191-152-186.us-east-2.compute.amazonaws.com/save.php");
+    xhr.open("POST", "https://ec2-18-191-152-186.us-east-2.compute.amazonaws.com/save.php");
     xhr.setRequestHeader("cache-control", "no-cache");
-    xhr.setRequestHeader("Postman-Token", "22b35aad-6d2a-4dd9-95c3-92ad5f3270fd");
 
     xhr.send(data);
 }
