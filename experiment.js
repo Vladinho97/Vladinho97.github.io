@@ -922,7 +922,7 @@ function gameOver()
     data.append("results", JSON.stringify(RESULTS));
 
     var xhr = new XMLHttpRequest();
-    xhr.withCredentials = true;
+    xhr.withCredentials = false;
 
     xhr.addEventListener("readystatechange", function () {
     if (this.readyState === 4) {
@@ -930,7 +930,7 @@ function gameOver()
      }
     });
 
-    xhr.open("POST", "https://ec2-18-191-152-186.us-east-2.compute.amazonaws.com/save.php");
+    xhr.open("POST", "http://ec2-18-191-152-186.us-east-2.compute.amazonaws.com/save.php");
     xhr.setRequestHeader("cache-control", "no-cache");
 
     xhr.send(data);
